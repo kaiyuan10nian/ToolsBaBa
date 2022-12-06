@@ -12,14 +12,15 @@ See the Mulan PSL v2 for more details.
 package FeatureJSONTools
 
 import (
+	"encoding/json"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"image/color"
-	"log"
-	"unicode"
+	"strings"
+	"unsafe"
 )
 
 /*
@@ -35,14 +36,15 @@ func JsonTool(app fyne.App) fyne.Window {
 	//开始画界面,使用一个大的输入框+按钮组成
 	inputJsonStr := widget.NewMultiLineEntry()
 	inputJsonStr.SetMinRowsVisible(12)//默认显示三行，强制显示12行
+	inputJsonStr.Wrapping=fyne.TextWrapBreak
 	errorStr := canvas.NewText("", color.RGBA{255,51,51,255})//用作提示
 	btnTurn := widget.NewButton("校验/格式化", func() {
-		log.Println("校验/格式化")
 		jsonStr := inputJsonStr.Text
 		if len(jsonStr) == 0{
 			refreshText(errorStr,"兄弟，你啥也不输入没法给你校验呀？")
 		}
-		jsonCheckAndFormat(inputJsonStr.Text)
+		inputJsonStr.SetText(jsonCheckAndFormat(errorStr,inputJsonStr.Text))
+		inputJsonStr.Refresh()
 	})
 	btnArroy := container.New(layout.NewHBoxLayout(),btnTurn,layout.NewSpacer())
 
@@ -57,13 +59,29 @@ func refreshText(str *canvas.Text, s string) {
 	str.Refresh()
 }
 //对JSON的校验和格式化 传进来的是json字符串
-func jsonCheckAndFormat(text string) {
-	for _,v := range text{
-		if unicode.IsSpace(v) {
+func jsonCheckAndFormat(errorStr *canvas.Text, text string) string {
 
+	result := make(map[string]interface{})
+	err := json.Unmarshal([]byte(text), &result)
+	if err != nil {
+		se, _ := err.(*json.SyntaxError)
+		field := string([]byte(text)[:se.Offset])
+		if i := strings.LastIndex(field, `":`); i >= 0 {
+			field = field[:i]
+			if j := strings.LastIndex(field, `"`); j >= 0 {
+				field = field[j+1:]
+			}
 		}
-		if unicode.IsPunct(v) {
-
-		}
+		refreshText(errorStr,err.Error()+" for "+field)
+		return text
 	}
+
+	js,_ := json.MarshalIndent(result, "", "\t")
+	refreshText(errorStr,"Congratulations!")
+	return BytesToString(js)
+
 }
+func BytesToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
